@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include "mapreduce.h"
 
 typedef struct _Pair {
@@ -11,11 +12,22 @@ typedef struct _Pair {
     char *value;
 }Pair;
 
+typedef struct _arg_mapper {
+    Mapper map;
+    int cnt;
+    char **files;
+} arg_mapper;
+
 Partitioner realPartitioner = NULL;
+// 2d dynamic array to save key-value pairs
 Pair **partitionTable = NULL;
+// real number of partitions, renew when MR_Run calls
 int real_num_partitions = 0;
+// capacity of each partition
 int *capacity = NULL;
+// current size of each partition
 int *size = NULL;
+// current index for each partition, using for get_next
 int *indexForGet = NULL;
 
 int comparator(const void *p, const void *q) {
@@ -42,7 +54,7 @@ char *get_next(char *key, int partition_number) {
     return partitionTable[partition_number][index].value;
 }
 
-void mapper(Mapper map, char *files[], int cnt){
+void *mapper(Mapper map, int cnt, char **files) {
     for (int i = 1; i <= cnt; ++i) {
         map(files[i]);
     }
@@ -91,19 +103,44 @@ void MR_Run(int argc, char *argv[],
     indexForGet = (int *)calloc(num_partitions, sizeof(int));
 
     // divide num_files files to num_mappers mappers.
+    // TODO: Shortest File First
+    int num_files_per_mapper[num_mappers];
+    for (int i = 0; i < num_mappers; ++i) {
+        num_files_per_mapper[i] = num_files / num_mappers;
+        if (i < num_files % num_mappers) {
+           num_files_per_mapper[i]++;
+        }
+    }
 
     // create num_mappers threads
-    mapper(map, argv, num_files);
+    pthread_t p_mapper[num_mappers];
+    arg_mapper argsMapper[num_mappers];
+    int cnt = 0;
+    for (int i = 0; i < num_mappers; ++i) {
+        argsMapper[i].map = map;
+        argsMapper[i].cnt = num_files_per_mapper[i];
+        argsMapper[i].files = (char **)(argv + cnt);
+//        mapper(map, num_files_per_mapper[i], argv + cnt);
+        pthread_create(&p_mapper[i], NULL, mapper, &argsMapper[i]);
+        cnt += num_files_per_mapper[i];
+    }
 
     // main thread join
+    for (int i = 0; i < num_mappers; ++i) {
+        pthread_join(p_mapper[i], NULL);
+    }
 
     // sort every partition
-    qsort(partitionTable[0], size[0], sizeof(Pair), comparator);
+    for (int i = 0; i < real_num_partitions; ++i) {
+        qsort(partitionTable[i], size[i], sizeof(Pair), comparator);
+    }
 
     // divide num_partitions of partitions to num_reducers of reducers
 
     // create num_reducers reducers
-    reducer(reduce, 0);
+    for (int i = 0; i < num_partitions; ++i) {
+        reducer(reduce, i);
+    }
 
     // TODO: free
     for (int i = 0; i < real_num_partitions; ++i) {
