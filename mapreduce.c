@@ -125,6 +125,10 @@ void *reducer(void *arg) {
 }
 
 void MR_Emit(char *key, char *value) {
+    char *key_copy = (char *)malloc(sizeof(*key));
+    char *value_copy = (char *)malloc(sizeof(*value));
+    strcpy(key_copy, key);
+    strcpy(value_copy, value);
     unsigned long hash = realPartitioner(key, real_num_partitions);
 //    printf("hash: %lu key: %lx key: %s\n", hash, (unsigned long)*key, key);
     // alloc space dynamically
@@ -138,10 +142,6 @@ void MR_Emit(char *key, char *value) {
         capacity[hash] = capacity[hash] * 2;
     }
     // insert into table
-    char *key_copy = (char *)malloc(sizeof(*key));
-    char *value_copy = (char *)malloc(sizeof(*value));
-    strcpy(key_copy, key);
-    strcpy(value_copy, value);
     partitionTable[hash][size[hash]].key = key_copy;
     partitionTable[hash][size[hash]].value = value_copy;
     ++size[hash];
