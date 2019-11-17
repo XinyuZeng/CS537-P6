@@ -77,7 +77,7 @@ void Pthread_mutex_unlock(pthread_mutex_t *mutex) {
     }
 }
 
-int round_robin_dispatch(int *num_loads_per_worker, int num_worker, int num_file) {
+void round_robin_dispatch(int *num_loads_per_worker, int num_worker, int num_file) {
     for (int i = 0; i < num_worker; ++i) {
         num_loads_per_worker[i] = num_file / num_worker;
         if (i < num_file % num_worker) {
@@ -107,6 +107,7 @@ void *mapper(void *arg) {
     for (int i = 1; i <= args->cnt; ++i) {
         args->map(args->files[i]);
     }
+    return NULL;
 }
 
 void reducer_helper(Reducer reduce, int partition_number) {
@@ -120,6 +121,7 @@ void *reducer(void *arg) {
     for (int i = args->start_num; i < args->start_num + args->cnt; ++i) {
         reducer_helper(args->reduce, i);
     }
+    return NULL;
 }
 
 void MR_Emit(char *key, char *value) {
