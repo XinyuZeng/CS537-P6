@@ -18,6 +18,12 @@ typedef struct _arg_mapper {
     char **files;
 } arg_mapper;
 
+typedef struct _arg_reducer {
+    Reducer reduce;
+    int start_num;
+    int cnt;
+} arg_reducer;
+
 // lock for each partition
 pthread_mutex_t *lock;
 
@@ -71,6 +77,15 @@ void Pthread_mutex_unlock(pthread_mutex_t *mutex) {
     }
 }
 
+int round_robin_dispatch(int *num_loads_per_worker, int num_worker, int num_file) {
+    for (int i = 0; i < num_worker; ++i) {
+        num_loads_per_worker[i] = num_file / num_worker;
+        if (i < num_file % num_worker) {
+            num_loads_per_worker[i]++;
+        }
+    }
+}
+
 char *get_next(char *key, int partition_number) {
     int index = indexForGet[partition_number];
     if (index >= size[partition_number])
@@ -94,9 +109,16 @@ void *mapper(void *arg) {
     }
 }
 
-void reducer(Reducer reduce, int partition_number) {
+void reducer_helper(Reducer reduce, int partition_number) {
     while (indexForGet[partition_number] < size[partition_number]) {
         reduce(partitionTable[partition_number][indexForGet[partition_number]].key, get_next, partition_number);
+    }
+}
+
+void *reducer(void *arg) {
+    arg_reducer *args = (arg_reducer *)arg;
+    for (int i = args->start_num; i < args->start_num + args->cnt; ++i) {
+        reducer_helper(args->reduce, i);
     }
 }
 
@@ -148,24 +170,19 @@ void MR_Run(int argc, char *argv[],
     // divide num_files files to num_mappers mappers.
     // TODO: Shortest File First
     int num_files_per_mapper[num_mappers];
-    for (int i = 0; i < num_mappers; ++i) {
-        num_files_per_mapper[i] = num_files / num_mappers;
-        if (i < num_files % num_mappers) {
-           num_files_per_mapper[i]++;
-        }
-    }
+    round_robin_dispatch(num_files_per_mapper, num_mappers, num_files);
 
     // create num_mappers threads
     pthread_t p_mapper[num_mappers];
     arg_mapper argsMapper[num_mappers];
-    int cnt = 0;
+    int mapper_cnt = 0;
     for (int i = 0; i < num_mappers; ++i) {
         argsMapper[i].map = map;
         argsMapper[i].cnt = num_files_per_mapper[i];
-        argsMapper[i].files = (char **)(argv + cnt);
-//        mapper(map, num_files_per_mapper[i], argv + cnt);
+        argsMapper[i].files = (char **)(argv + mapper_cnt);
+//        mapper(map, num_files_per_mapper[i], argv + mapper_cnt);
         pthread_create(&p_mapper[i], NULL, mapper, &argsMapper[i]);
-        cnt += num_files_per_mapper[i];
+        mapper_cnt += num_files_per_mapper[i];
     }
 
     // main thread join
@@ -179,10 +196,24 @@ void MR_Run(int argc, char *argv[],
     }
 
     // divide num_partitions of partitions to num_reducers of reducers
+    int num_partitions_per_reducer[num_reducers];
+    round_robin_dispatch(num_partitions_per_reducer, num_reducers, num_partitions);
 
-    // create num_reducers reducers
-    for (int i = 0; i < num_partitions; ++i) {
-        reducer(reduce, i);
+    // create num_reducers reducers threads
+    pthread_t p_reducer[num_reducers];
+    arg_reducer argsReducer[num_reducers];
+    int reducer_cnt = 0;
+    for (int i = 0; i < num_reducers; ++i) {
+        argsReducer[i].reduce = reduce;
+        argsReducer[i].start_num = reducer_cnt;
+        argsReducer[i].cnt = num_partitions_per_reducer[i];
+        pthread_create(&p_reducer[i], NULL, reducer, &argsReducer[i]);
+        reducer_cnt += num_partitions_per_reducer[i];
+    }
+
+    // main thread join for reducers
+    for (int i = 0; i < num_reducers; ++i) {
+        pthread_join(p_reducer[i], NULL);
     }
 
     // TODO: free
