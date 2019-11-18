@@ -124,7 +124,7 @@ void MR_Emit(char *key, char *value) {
     char *value_copy = (char *) malloc(sizeof(*value));
     strcpy(key_copy, key);
     strcpy(value_copy, value);
-    u_int32_t hash = realPartitioner(key, real_num_partitions);
+    unsigned long hash = realPartitioner(key, real_num_partitions);
 //    printf("hash: %lu key: %lx key: %s\n", hash, (unsigned long)*key, key);
     // alloc space dynamically
     Pthread_mutex_lock(&lock[hash]);
@@ -236,7 +236,7 @@ void MR_Run(int argc, char *argv[],
 }
 
 unsigned long MR_DefaultHashPartition(char *key, int num_partitions) {
-    u_int32_t hash = 5381;
+    unsigned long hash = 5381;
     int c;
     while ((c = *key++) != '\0')
         hash = hash * 33 + c;
@@ -250,6 +250,6 @@ unsigned long MR_SortedPartition(char *key, int num_partitions) {
         num_partitions /= 2;
     }
     char *endptr;
-    u_int32_t hash = strtoul(key, &endptr, 10) >> (32 - high_bits);
+    unsigned long hash = strtoul(key, &endptr, 10) >> (32 - high_bits);
     return hash;
 }
