@@ -5,12 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-#include "mapreduce.h"
+#include "./mapreduce.h"
 
 typedef struct _Pair {
     char *key;
     char *value;
-}Pair;
+} Pair;
 
 typedef struct _arg_mapper {
     Mapper map;
@@ -46,15 +46,15 @@ int *size = NULL;
 int *indexForGet = NULL;
 
 int comparator(const void *p, const void *q) {
-    Pair x = *(const Pair *)p;
-    Pair y = *(const Pair *)q;
+    Pair x = *(const Pair *) p;
+    Pair y = *(const Pair *) q;
 
     /* Avoid return x - y, which can cause undefined behaviour
        because of signed integer overflow. */
     if (strcmp(x.key, y.key) < 0)
-        return -1;  // Return -1 if you want ascending, 1 if you want descending order.
+        return -1;
     else if (strcmp(x.key, y.key) > 0)
-        return 1;   // Return 1 if you want ascending, -1 if you want descending order.
+        return 1;
 
     return 0;
 }
@@ -77,7 +77,8 @@ void Pthread_mutex_unlock(pthread_mutex_t *mutex) {
     }
 }
 
-void round_robin_dispatch(int *num_loads_per_worker, int num_worker, int num_file) {
+void round_robin_dispatch(int *num_loads_per_worker,
+        int num_worker, int num_file) {
     for (int i = 0; i < num_worker; ++i) {
         num_loads_per_worker[i] = num_file / num_worker;
         if (i < num_file % num_worker) {
@@ -96,28 +97,22 @@ char *get_next(char *key, int partition_number) {
     return partitionTable[partition_number][index].value;
 }
 
-//void *mapper(Mapper map, int cnt, char **files) {
-//    for (int i = 1; i <= cnt; ++i) {
-//        map(files[i]);
-//    }
-//}
-
 void *mapper(void *arg) {
-    arg_mapper *args = (arg_mapper *)arg;
+    arg_mapper *args = (arg_mapper *) arg;
     for (int i = 1; i <= args->cnt; ++i) {
         args->map(args->files[i]);
     }
     return NULL;
 }
 
-void reducer_helper(Reducer reduce, int partition_number) {
-    while (indexForGet[partition_number] < size[partition_number]) {
-        reduce(partitionTable[partition_number][indexForGet[partition_number]].key, get_next, partition_number);
+void reducer_helper(Reducer reduce, int p_num) {
+    while (indexForGet[p_num] < size[p_num]) {
+        reduce(partitionTable[p_num][indexForGet[p_num]].key, get_next, p_num);
     }
 }
 
 void *reducer(void *arg) {
-    arg_reducer *args = (arg_reducer *)arg;
+    arg_reducer *args = (arg_reducer *) arg;
     for (int i = args->start_num; i < args->start_num + args->cnt; ++i) {
         reducer_helper(args->reduce, i);
     }
@@ -125,20 +120,20 @@ void *reducer(void *arg) {
 }
 
 void MR_Emit(char *key, char *value) {
-    char *key_copy = (char *)malloc(sizeof(*key));
-    char *value_copy = (char *)malloc(sizeof(*value));
+    char *key_copy = (char *) malloc(sizeof(*key));
+    char *value_copy = (char *) malloc(sizeof(*value));
     strcpy(key_copy, key);
     strcpy(value_copy, value);
-    unsigned long hash = realPartitioner(key, real_num_partitions);
+    u_int32_t hash = realPartitioner(key, real_num_partitions);
 //    printf("hash: %lu key: %lx key: %s\n", hash, (unsigned long)*key, key);
     // alloc space dynamically
     Pthread_mutex_lock(&lock[hash]);
     if (capacity[hash] == 0) {
         capacity[hash] = 16;
-        partitionTable[hash] = (Pair *)malloc(sizeof(Pair) * 16);
+        partitionTable[hash] = (Pair *) malloc(sizeof(Pair) * 16);
     } else if (size[hash] == capacity[hash]) {
-        partitionTable[hash] = (Pair *)realloc(partitionTable[hash],
-                                               2 * capacity[hash] * sizeof(Pair));
+        partitionTable[hash] = (Pair *) realloc(partitionTable[hash],
+                2 * capacity[hash] * sizeof(Pair));
         capacity[hash] = capacity[hash] * 2;
     }
     // insert into table
@@ -158,19 +153,19 @@ void MR_Run(int argc, char *argv[],
     real_num_partitions = num_partitions;
 
     // create num_partitions of partitions
-    partitionTable = (Pair **)malloc(sizeof(Pair *) * num_partitions);
-    size = (int *)calloc(num_partitions, sizeof(int));
-    capacity = (int *)calloc(num_partitions, sizeof(int));
-    indexForGet = (int *)calloc(num_partitions, sizeof(int));
+    partitionTable = (Pair **) malloc(sizeof(Pair *) * num_partitions);
+    size = (int *) calloc(num_partitions, sizeof(int));
+    capacity = (int *) calloc(num_partitions, sizeof(int));
+    indexForGet = (int *) calloc(num_partitions, sizeof(int));
 
     // init lock
-    lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t) * num_partitions);
+    lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t) * num_partitions);
     for (int i = 0; i < num_partitions; ++i) {
         Pthread_mutex_init(&lock[i]);
     }
 
     // divide num_files files to num_mappers mappers.
-    // TODO: Shortest File First
+    // ?Shortest File First
     int num_files_per_mapper[num_mappers];
     round_robin_dispatch(num_files_per_mapper, num_mappers, num_files);
 
@@ -181,7 +176,7 @@ void MR_Run(int argc, char *argv[],
     for (int i = 0; i < num_mappers; ++i) {
         argsMapper[i].map = map;
         argsMapper[i].cnt = num_files_per_mapper[i];
-        argsMapper[i].files = (char **)(argv + mapper_cnt);
+        argsMapper[i].files = (char **) (argv + mapper_cnt);
 //        mapper(map, num_files_per_mapper[i], argv + mapper_cnt);
         pthread_create(&p_mapper[i], NULL, mapper, &argsMapper[i]);
         mapper_cnt += num_files_per_mapper[i];
@@ -199,7 +194,8 @@ void MR_Run(int argc, char *argv[],
 
     // divide num_partitions of partitions to num_reducers of reducers
     int num_partitions_per_reducer[num_reducers];
-    round_robin_dispatch(num_partitions_per_reducer, num_reducers, num_partitions);
+    round_robin_dispatch(num_partitions_per_reducer,
+            num_reducers, num_partitions);
 
     // create num_reducers reducers threads
     pthread_t p_reducer[num_reducers];
@@ -218,7 +214,7 @@ void MR_Run(int argc, char *argv[],
         pthread_join(p_reducer[i], NULL);
     }
 
-    // TODO: free
+    // free
     for (int i = 0; i < real_num_partitions; ++i) {
         for (int j = 0; j < size[i]; ++j) {
             free(partitionTable[i][j].key);
@@ -240,7 +236,7 @@ void MR_Run(int argc, char *argv[],
 }
 
 unsigned long MR_DefaultHashPartition(char *key, int num_partitions) {
-    unsigned long hash = 5381;
+    u_int32_t hash = 5381;
     int c;
     while ((c = *key++) != '\0')
         hash = hash * 33 + c;
@@ -254,6 +250,6 @@ unsigned long MR_SortedPartition(char *key, int num_partitions) {
         num_partitions /= 2;
     }
     char *endptr;
-    unsigned long hash = strtoul(key, &endptr, 10) >> (32 - high_bits);
+    u_int32_t hash = strtoul(key, &endptr, 10) >> (32 - high_bits);
     return hash;
 }
