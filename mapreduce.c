@@ -120,8 +120,8 @@ void *reducer(void *arg) {
 }
 
 void MR_Emit(char *key, char *value) {
-    char *key_copy = (char *) malloc(sizeof(*key));
-    char *value_copy = (char *) malloc(sizeof(*value));
+    char *key_copy = (char *) malloc(strlen(key)+1);
+    char *value_copy = (char *) malloc(strlen(value)+1);
     strcpy(key_copy, key);
     strcpy(value_copy, value);
     unsigned long hash = realPartitioner(key, real_num_partitions);
@@ -230,6 +230,8 @@ void MR_Run(int argc, char *argv[],
     free(size);
     free(capacity);
     free(indexForGet);
+    free(lock);
+    lock = NULL;
     capacity = NULL;
     size = NULL;
     indexForGet = NULL;

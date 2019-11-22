@@ -4,7 +4,6 @@
 
 #ifndef P6_MAPREDUCE_H
 #define P6_MAPREDUCE_H
-#include <pthread.h>
 
 // Different function pointer types used by MR
 typedef char *(*Getter)(char *key, int partition_number);

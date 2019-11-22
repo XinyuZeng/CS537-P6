@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="p6" showNewOnTargetInSync="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="p6" showDifferentInSync="false" showNewOnSourceInSync="false">
     <serverData>
       <paths name="p6">
         <serverdata>
