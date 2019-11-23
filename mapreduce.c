@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <sys/stat.h>
 #include "./mapreduce.h"
 
 typedef struct _Pair {
@@ -26,6 +27,9 @@ typedef struct _arg_reducer {
 
 // lock for each partition
 pthread_mutex_t *lock;
+pthread_mutex_t lock_file_list;
+volatile int file_index = 1;
+int num_files;
 
 // partition function, init after MR_RUN
 Partitioner realPartitioner = NULL;
@@ -57,6 +61,15 @@ int comparator(const void *p, const void *q) {
         return 1;
 
     return 0;
+}
+
+long fsize(const char *filename) {
+    struct stat st;
+
+    if (stat(filename, &st) == 0)
+        return st.st_size;
+
+    return -1;
 }
 
 void Pthread_mutex_init(pthread_mutex_t *mutex) {
@@ -99,7 +112,20 @@ char *get_next(char *key, int partition_number) {
 
 void *mapper(void *arg) {
     arg_mapper *args = (arg_mapper *) arg;
-    for (int i = 1; i <= args->cnt; ++i) {
+//    for (int i = 1; i <= args->cnt; ++i) {
+//        args->map(args->files[i]);
+//    }
+    while (1) {
+        int i;
+        Pthread_mutex_lock(&lock_file_list);
+        if (file_index > num_files) {
+            Pthread_mutex_unlock(&lock_file_list);
+            break;
+        } else {
+            i = file_index;
+            ++file_index;
+        }
+        Pthread_mutex_unlock(&lock_file_list);
         args->map(args->files[i]);
     }
     return NULL;
@@ -148,7 +174,7 @@ void MR_Run(int argc, char *argv[],
             Reducer reduce, int num_reducers,
             Partitioner partition, int num_partitions) {
     // init globals
-    int num_files = argc - 1;
+    num_files = argc - 1;
     realPartitioner = partition;
     real_num_partitions = num_partitions;
 
@@ -164,6 +190,8 @@ void MR_Run(int argc, char *argv[],
         Pthread_mutex_init(&lock[i]);
     }
 
+    Pthread_mutex_init(&lock_file_list);
+
     // divide num_files files to num_mappers mappers.
     // ?Shortest File First
     int num_files_per_mapper[num_mappers];
@@ -176,7 +204,8 @@ void MR_Run(int argc, char *argv[],
     for (int i = 0; i < num_mappers; ++i) {
         argsMapper[i].map = map;
         argsMapper[i].cnt = num_files_per_mapper[i];
-        argsMapper[i].files = (char **) (argv + mapper_cnt);
+        argsMapper[i].files = (char **) argv;
+//        argsMapper[i].files = (char **) (argv + mapper_cnt);
 //        mapper(map, num_files_per_mapper[i], argv + mapper_cnt);
         pthread_create(&p_mapper[i], NULL, mapper, &argsMapper[i]);
         mapper_cnt += num_files_per_mapper[i];
