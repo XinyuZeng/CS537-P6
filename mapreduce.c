@@ -177,6 +177,8 @@ void MR_Run(int argc, char *argv[],
     num_files = argc - 1;
     realPartitioner = partition;
     real_num_partitions = num_partitions;
+    int kNumMappers = num_mappers;
+    int kNumReducers = num_reducers;
 
     // create num_partitions of partitions
     partitionTable = (Pair **) malloc(sizeof(Pair *) * num_partitions);
@@ -194,14 +196,14 @@ void MR_Run(int argc, char *argv[],
 
     // divide num_files files to num_mappers mappers.
     // ?Shortest File First
-    int num_files_per_mapper[num_mappers];
-    round_robin_dispatch(num_files_per_mapper, num_mappers, num_files);
+    int num_files_per_mapper[kNumMappers];
+    round_robin_dispatch(num_files_per_mapper, kNumMappers, num_files);
 
     // create num_mappers threads
-    pthread_t p_mapper[num_mappers];
-    arg_mapper argsMapper[num_mappers];
+    pthread_t p_mapper[kNumMappers];
+    arg_mapper argsMapper[kNumMappers];
     int mapper_cnt = 0;
-    for (int i = 0; i < num_mappers; ++i) {
+    for (int i = 0; i < kNumMappers; ++i) {
         argsMapper[i].map = map;
         argsMapper[i].cnt = num_files_per_mapper[i];
         argsMapper[i].files = (char **) argv;
@@ -212,7 +214,7 @@ void MR_Run(int argc, char *argv[],
     }
 
     // main thread join
-    for (int i = 0; i < num_mappers; ++i) {
+    for (int i = 0; i < kNumMappers; ++i) {
         pthread_join(p_mapper[i], NULL);
     }
 
@@ -222,15 +224,15 @@ void MR_Run(int argc, char *argv[],
     }
 
     // divide num_partitions of partitions to num_reducers of reducers
-    int num_partitions_per_reducer[num_reducers];
+    int num_partitions_per_reducer[kNumReducers];
     round_robin_dispatch(num_partitions_per_reducer,
-            num_reducers, num_partitions);
+                         kNumReducers, num_partitions);
 
     // create num_reducers reducers threads
-    pthread_t p_reducer[num_reducers];
-    arg_reducer argsReducer[num_reducers];
+    pthread_t p_reducer[kNumReducers];
+    arg_reducer argsReducer[kNumReducers];
     int reducer_cnt = 0;
-    for (int i = 0; i < num_reducers; ++i) {
+    for (int i = 0; i < kNumReducers; ++i) {
         argsReducer[i].reduce = reduce;
         argsReducer[i].start_num = reducer_cnt;
         argsReducer[i].cnt = num_partitions_per_reducer[i];
@@ -239,7 +241,7 @@ void MR_Run(int argc, char *argv[],
     }
 
     // main thread join for reducers
-    for (int i = 0; i < num_reducers; ++i) {
+    for (int i = 0; i < kNumReducers; ++i) {
         pthread_join(p_reducer[i], NULL);
     }
 
